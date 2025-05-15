@@ -69,12 +69,104 @@ class NEWTON:
         #
         return (phi_old + eval_delta_phi)
 
-    
+
+#
+# CLASS: NEWTON-RAPHSON METHOD
+#
+
+class NEWTON_RAPHSON:
+
+    def __init__(self):
+        # fundamental constants
+        self.fc = FC()
+        
+        # variables
+        self.phi1  = sp.symbols('phi1')
+        self.phi2  = sp.symbols('phi2')
+        self.phi3  = sp.symbols('phi3')
+        
+        # functions
+        self.f1 = sp.Function('f1')(self.phi1, self.phi2, self.phi3)
+        self.f2 = sp.Function('f2')(self.phi1, self.phi2, self.phi3)
+        self.f3 = sp.Function('f3')(self.phi1, self.phi2, self.phi3)
+        
+        # derivative
+        self.df1_dphi1 = self.f1.diff(self.phi1)
+        self.df1_dphi2 = self.f1.diff(self.phi2)
+        self.df1_dphi3 = self.f1.diff(self.phi3)
+        self.df2_dphi1 = self.f2.diff(self.phi1)
+        self.df2_dphi2 = self.f2.diff(self.phi2)
+        self.df2_dphi3 = self.f2.diff(self.phi3)
+        self.df3_dphi1 = self.f3.diff(self.phi1)
+        self.df3_dphi2 = self.f3.diff(self.phi2)
+        self.df3_dphi3 = self.f3.diff(self.phi3)
+
+
+    def set_expression(self):
+        # user input
+        self.expr1  = -2*self.phi1 - sp.exp(self.phi1) + self.phi2
+        self.expr2  = self.phi1 - sp.exp(self.phi2) - 2*self.phi2  + self.phi3
+        self.expr3  = self.phi2 - sp.exp(self.phi3) - 2*self.phi3  + 4
+        
+        # derivative
+        self.dexpr1_dphi1 = self.df1_dphi1.subs(self.f1, self.expr1).doit()
+        self.dexpr1_dphi2 = self.df1_dphi2.subs(self.f1, self.expr1).doit()
+        self.dexpr1_dphi3 = self.df1_dphi3.subs(self.f1, self.expr1).doit()
+        self.dexpr2_dphi1 = self.df2_dphi1.subs(self.f2, self.expr2).doit()
+        self.dexpr2_dphi2 = self.df2_dphi2.subs(self.f2, self.expr2).doit()
+        self.dexpr2_dphi3 = self.df2_dphi3.subs(self.f2, self.expr2).doit()
+        self.dexpr3_dphi1 = self.df3_dphi1.subs(self.f3, self.expr3).doit()
+        self.dexpr3_dphi2 = self.df3_dphi2.subs(self.f3, self.expr3).doit()
+        self.dexpr3_dphi3 = self.df3_dphi3.subs(self.f3, self.expr3).doit()
+
+        # delta phi1
+        self.dexpr1 = self.dexpr1_dphi1 
+        
+
+    def newton_raphson_method(self, phi_old):
+        #
+        vals = {self.phi1: phi_old[0], self.phi2: phi_old[1], self.phi3: phi_old[2]}
+
+        # Jacobian matrix 1
+        dexpr1_dphi1 = float(self.dexpr1_dphi1.evalf(subs=vals))
+        dexpr1_dphi2 = float(self.dexpr1_dphi2.evalf(subs=vals))
+        dexpr1_dphi3 = float(self.dexpr1_dphi3.evalf(subs=vals))
+        dexpr2_dphi1 = float(self.dexpr2_dphi1.evalf(subs=vals))
+        dexpr2_dphi2 = float(self.dexpr2_dphi2.evalf(subs=vals))
+        dexpr2_dphi3 = float(self.dexpr2_dphi3.evalf(subs=vals))
+        dexpr3_dphi1 = float(self.dexpr3_dphi1.evalf(subs=vals))
+        dexpr3_dphi2 = float(self.dexpr3_dphi2.evalf(subs=vals))
+        dexpr3_dphi3 = float(self.dexpr3_dphi3.evalf(subs=vals))
+
+        # Jacobian matrix 2
+        J = np.array([ [dexpr1_dphi1, dexpr1_dphi2, dexpr1_dphi3],
+                       [dexpr2_dphi1, dexpr2_dphi2, dexpr2_dphi3],
+                       [dexpr3_dphi1, dexpr3_dphi2, dexpr3_dphi3] ])
+
+        # LHS vector 1
+        expr1 = -float(self.expr1.evalf(subs=vals))
+        expr2 = -float(self.expr2.evalf(subs=vals))
+        expr3 = -float(self.expr3.evalf(subs=vals))
+
+        # LHS vector 2
+        R = np.array([ expr1, expr2, expr3 ])
+
+        # delta phi
+        delta_phi = np.linalg.solve(J, R)
+        
+        #
+        return phi_old + delta_phi
+
+
 
 
 
 #
 # MAIN
+#
+
+#
+# Newton method
 #
 
 dopant_density_array = [1e16, 1e17, 1e18, 1e19, 1e20, 1e21, 1e22, 1e23, 1e24]
@@ -113,4 +205,19 @@ for index, dopant_density in enumerate(dopant_density_array):
             
     #
     print('%i, %.6f' % (iteration, phi) )
+
+#
+# Newton-Raphson method
+#
+
+newton_raphson_method = NEWTON_RAPHSON()
+newton_raphson_method.set_expression()
+phi0 = [1, 2, 3]
+for cnt in range(10):
+    if cnt == 0:
+        phi_new = newton_raphson_method.newton_raphson_method(phi0)
+    else:
+        phi_new = newton_raphson_method.newton_raphson_method(phi_new)
+
+    print(cnt+1, phi_new)
 
