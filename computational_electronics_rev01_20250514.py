@@ -158,6 +158,238 @@ class NEWTON_RAPHSON:
         return phi_old + delta_phi
 
 
+#
+# CLASS: Nonlinear Poisson equation
+#
+
+class N_POISSON_EQ:
+
+    def __init__(self):
+        # fundamental constants
+        self.fc = FC()
+
+        # variables: constant
+        self.T = sp.symbols('T')
+        self.phi_th = self.fc.kb * self.T / self.fc.q
+
+        # variables: nodes
+        self.phi_im10 = sp.symbols('phi_{i-1}')
+        self.phi_i    = sp.symbols('phi_{i}')
+        self.phi_ip10 = sp.symbols('phi_{i+1}')
+        
+        # variables: elements 1
+        self.dx_im05 = sp.symbols('dx_{i-0.5}')
+        self.dx_ip05 = sp.symbols('dx_{i+0.5}')
+
+        # variables: elements 2
+        self.ep_im05  = sp.symbols('ep_{i-0.5}')
+        self.ep_ip05  = sp.symbols('ep_{i+0.5}')
+        self.rho_im05 = sp.symbols('rho_{i-0.5}')
+        self.rho_ip05 = sp.symbols('rho_{i+0.5]')
+        self.dp_im05  = sp.symbols('dp_{i-0.5}')
+        self.dp_ip05  = sp.symbols('dp_{i+0.5}')
+
+        # electric displacement
+        self.d_ip05 = self.ep_ip05 / self.dx_ip05 *( self.phi_ip10 - self.phi_i   )
+        self.d_im05 = self.ep_im05 / self.dx_im05 *( self.phi_i    - self.phi_im10 )
+
+        # charge 1: fixed charge
+        self.q1_ip05 = (self.fc.q * self.rho_ip05) * (self.dx_ip05 / 2)
+        self.q1_im05 = (self.fc.q * self.rho_im05) * (self.dx_im05 / 2)
+
+        # charge 2: dopant charge
+        self.q2_ip05 = (self.fc.q * self.dp_ip05) * (self.dx_ip05 / 2)
+        self.q2_im05 = (self.fc.q * self.dp_im05) * (self.dx_im05 / 2)
+
+        # charge 3: induced electrons
+        self.q3_ip05 = -(self.fc.q * self.fc.ni) * (self.dx_ip05 / 2) * sp.exp( self.phi_i / self.phi_th )
+        self.q3_im05 = -(self.fc.q * self.fc.ni) * (self.dx_im05 / 2) * sp.exp( self.phi_i / self.phi_th )
+
+        # charge 4: induced holes
+        self.q4_ip05 = (self.fc.q * self.fc.ni) * (self.dx_ip05 / 2) * sp.exp( -self.phi_i / self.phi_th )
+        self.q4_im05 = (self.fc.q * self.fc.ni) * (self.dx_im05 / 2) * sp.exp( -self.phi_i / self.phi_th )
+
+        # function
+        self.f  = ( self.d_ip05 - self.d_im05 )
+        self.f += ( self.q1_ip05 + self.q1_im05 )
+        self.f += ( self.q2_ip05 + self.q2_im05 )
+        self.f += ( self.q3_ip05 + self.q3_im05 )
+        self.f += ( self.q4_ip05 + self.q4_im05 )
+
+        # Jacobian
+        self.df_dphi_im10 = self.f.diff(self.phi_im10)
+        self.df_dphi_ip10 = self.f.diff(self.phi_ip10)
+        self.df_dphi_i = self.f.diff(self.phi_i)
+
+        # geometry: nodes, x coordinate
+        self.num_of_nodes = 1
+        self.x_pos = [0.0]
+        
+        # geometry: elements, dx, material, epsilion, rho, doping
+        self.num_of_elements = 0
+        self.dx_pos = []
+        self.mat = []
+        self.ep = []
+        self.rho = []
+        self.dp = []
+
+        # debugging
+        if True:
+            print(self.d_ip05)
+            print(self.d_im05)
+            print(self.q1_ip05)
+            print(self.q1_im05)
+            print(self.q2_ip05)
+            print(self.q2_im05)
+            print(self.q3_ip05)
+            print(self.q3_im05)
+            print(self.q4_ip05)
+            print(self.q4_im05)
+            print(self.f)
+            print(self.df_dphi_im10)
+            print(self.df_dphi_ip10)
+            print(self.df_dphi_i)
+            print('')
+
+
+    def add_node(self, dx, mat, ep_k, rho, doping):
+        # geometry: nodes, x coordinate
+        self.num_of_nodes += 1
+        self.x_pos.append(self.x_pos[-1] + dx)
+
+        # geometry: elements, dx, mat, epsilion, rho, doping
+        self.num_of_elements += 1
+        self.dx_pos.append(dx)
+        self.mat.append(mat)
+        self.ep.append(ep_k * self.fc.ep0)
+        self.rho.append(rho)
+        self.dp.append(doping)
+
+        # debugging
+        if False:
+            output_string  = '%i %i > ' % (self.num_of_nodes, self.num_of_elements)
+            output_string +=  'x_pos = %s > ' % self.x_pos
+            output_string +=  'dx_pos = %s > ' % self.dx_pos
+            output_string +=  'mat = %s > ' % self.mat
+            output_string +=  'ep = %s > ' % self.ep
+            output_string +=  'rho = %s > ' % self.rho
+            output_string +=  'doping = %s' % self.dp
+            print(output_string)
+            print('')
+
+
+    def newton_raphson_method(self, temp, left_phi, right_phi):
+        # phi
+        self.phi = np.zeros(self.num_of_nodes, dtype=float)
+
+        # f0
+        self.f0 = np.zeros(self.num_of_nodes, dtype=float)
+        
+        # Jacobian matrix
+        self.J = np.zeros([self.num_of_nodes, self.num_of_nodes], dtype=float)
+
+        # delta phi
+        self.dphi = np.zeros(self.num_of_nodes, dtype=float)
+
+        # Dirichlet boundary conditions
+        self.f0[0] = left_phi
+        self.J[0, 0] = 1.0
+        self.phi[0] = left_phi
+        
+        self.f0[-1] = right_phi
+        self.J[-1, -1] = 1.0
+        self.phi[-1] = right_phi
+
+        #  visualization
+        fig, ax = plt.subplots(1, 2)
+        
+        # loop
+        nrm_legend = []
+        
+        for loop in range(10):
+            #
+            nrm_legend.append('%s' % loop)
+            #
+            for each_f in range(self.num_of_nodes):
+                #
+                if (each_f != 0) and (each_f != (self.num_of_nodes-1)):
+                    #
+                    vals = {}
+                    vals[self.T] = temp + 273.15                    # Kelvin
+                    # element > dx
+                    vals[self.dx_im05] = self.dx_pos[each_f-1]      # dx
+                    vals[self.dx_ip05] = self.dx_pos[each_f+0]      # dx
+                    # element > electric permittivity
+                    vals[self.ep_im05] = self.ep[each_f-1]          # electric permittivity
+                    vals[self.ep_ip05] = self.ep[each_f+0]          # electric permittivity
+                    # element > fixed charge
+                    vals[self.rho_im05] = self.rho[each_f-1]        # fixed charge
+                    vals[self.rho_ip05] = self.rho[each_f+0]        # fixed charge
+                    # element > doping
+                    vals[self.dp_im05] = self.dp[each_f-1]          # doping
+                    vals[self.dp_ip05] = self.dp[each_f+0]          # doping
+                    # nodes > phi_{i-1}, phi_{i}, phi_{i+1} 
+                    vals[self.phi_im10] = self.phi[each_f-1]        # phi_{i-1}
+                    vals[self.phi_i] = self.phi[each_f+0]           # phi_{i}
+                    vals[self.phi_ip10] = self.phi[each_f+1]        # phi_{i+1}
+                    #
+                    self.f0[each_f] = self.f.evalf(subs=vals)
+                    #
+                    self.J[each_f, each_f-1] = self.df_dphi_im10.evalf(subs=vals)
+                    self.J[each_f, each_f+0] = self.df_dphi_i.evalf(subs=vals)
+                    self.J[each_f, each_f+1] = self.df_dphi_ip10.evalf(subs=vals)
+
+            #
+            self.dphi = np.linalg.solve(self.J, -self.f0)
+            self.dphi[0] = 0.0
+            self.dphi[-1] = 0.0
+            
+            #
+            self.phi = self.phi + self.dphi
+
+            #
+            print(loop, np.max(self.dphi))
+
+            # visualization
+            ax[0].plot(self.phi)
+            ax[1].plot((self.phi[1:]-self.phi[:-1])/self.dx_pos)
+
+        #
+        ax[0].legend(nrm_legend)
+        ax[1].legend(nrm_legend)
+        plt.show()
+        
+
+
+    def governing_fdm(self):
+
+        print('num of elements = %i' % self.num_of_elements)
+        print('num of nodes = %i' % self.num_of_nodes)
+        print('')
+
+        for each_node in range(1, self.num_of_nodes-2):
+            if each_node == 1:
+                vals = {}
+                vals[self.T] = 300.0
+                vals[self.dx_im05] = self.dx_pos[each_node-1]
+                vals[self.dx_ip05] = self.dx_pos[each_node]
+                vals[self.ep_im05] = self.ep[each_node-1]
+                vals[self.ep_ip05] = self.ep[each_node]
+                vals[self.rho_im05] = self.rho[each_node-1]
+                vals[self.rho_ip05] = self.rho[each_node]
+                vals[self.dp_im05] = self.dp[each_node-1]
+                vals[self.dp_ip05] = self.dp[each_node]
+                vals[self.phi_im10] = 1.0
+                vals[self.phi_i] = 0.0
+                vals[self.phi_ip10] = 0.0
+                print(each_node)
+                print(vals)
+                print(self.f.evalf(subs=vals))
+                print(self.df_dphi_im10.evalf(subs=vals))
+                print(self.df_dphi_ip10.evalf(subs=vals))
+                print(self.df_dphi_i.evalf(subs=vals))
+            
+
 
 
 
@@ -212,7 +444,9 @@ for index, dopant_density in enumerate(dopant_density_array):
 
 newton_raphson_method = NEWTON_RAPHSON()
 newton_raphson_method.set_expression()
+
 phi0 = [1, 2, 3]
+
 for cnt in range(10):
     if cnt == 0:
         phi_new = newton_raphson_method.newton_raphson_method(phi0)
@@ -220,4 +454,23 @@ for cnt in range(10):
         phi_new = newton_raphson_method.newton_raphson_method(phi_new)
 
     print(cnt+1, phi_new)
+
+#
+# Nonlinear Poisson equation
+#
+
+npe = N_POISSON_EQ()
+
+for cnt in range(20):
+    npe.add_node(dx=1e-10, mat='O', ep_k=3.9, rho=0.0, doping=0.0)
+for cnt in range(60):
+    npe.add_node(dx=1e-10, mat='S', ep_k=11.7, rho=0.0, doping=1e25)
+for cnt in range(20):
+    npe.add_node(dx=1e-10, mat='O', ep_k=3.9, rho=0.0, doping=0.0)
+
+#npe.governing_fdm()
+npe.newton_raphson_method(temp=25.0, left_phi=0.0, right_phi=1.0)
+
+
+
 
