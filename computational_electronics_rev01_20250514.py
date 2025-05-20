@@ -161,6 +161,13 @@ class NEWTON_RAPHSON:
 #
 # CLASS: Nonlinear Poisson equation
 #
+# ▽·( -ε(r) ▽Ψ(r) ) = q ρ(r) + q N_dop(r) - q n(r) + q p(r)
+#
+# ▽·( -ε(r) ▽Ψ(r) ) = q ρ(r) + q N_dop(r) - q N_int exp( q Ψ(r) / (k_b T) ) + q N_int exp( -q Ψ(r) / (k_b T) ) 
+#
+# f = ▽·( ε(r) ▽Ψ(r) ) q ρ(r) + q N_dop(r) - q N_int exp( q Ψ(r) / (k_b T) ) + q N_int exp( -q Ψ(r) / (k_b T) ) 
+#
+#
 
 class N_POISSON_EQ:
 
@@ -214,7 +221,7 @@ class N_POISSON_EQ:
         self.f += ( self.q1_ip05 + self.q1_im05 )
         self.f += ( self.q2_ip05 + self.q2_im05 )
         self.f += ( self.q3_ip05 + self.q3_im05 )
-        self.f += ( self.q4_ip05 + self.q4_im05 )
+        #self.f += ( self.q4_ip05 + self.q4_im05 )
 
         # Jacobian
         self.df_dphi_im10 = self.f.diff(self.phi_im10)
@@ -292,11 +299,11 @@ class N_POISSON_EQ:
         self.dphi = np.zeros(self.num_of_nodes, dtype=float)
 
         # Dirichlet boundary conditions
-        self.f0[0] = left_phi
+        self.f0[0] = 0.0
         self.J[0, 0] = 1.0
         self.phi[0] = left_phi
         
-        self.f0[-1] = right_phi
+        self.f0[-1] = 0.0
         self.J[-1, -1] = 1.0
         self.phi[-1] = right_phi
 
@@ -309,6 +316,16 @@ class N_POISSON_EQ:
         for loop in range(10):
             #
             nrm_legend.append('%s' % loop)
+
+            # Dirichlet boundary conditions
+            self.f0[0] = 0.0
+            self.J[0, 0] = 1.0
+            self.phi[0] = left_phi
+        
+            self.f0[-1] = 0.0
+            self.J[-1, -1] = 1.0
+            self.phi[-1] = right_phi
+            
             #
             for each_f in range(self.num_of_nodes):
                 #
@@ -341,9 +358,7 @@ class N_POISSON_EQ:
 
             #
             self.dphi = np.linalg.solve(self.J, -self.f0)
-            self.dphi[0] = 0.0
-            self.dphi[-1] = 0.0
-            
+            print(self.dphi)
             #
             self.phi = self.phi + self.dphi
 
@@ -464,7 +479,7 @@ npe = N_POISSON_EQ()
 for cnt in range(20):
     npe.add_node(dx=1e-10, mat='O', ep_k=3.9, rho=0.0, doping=0.0)
 for cnt in range(60):
-    npe.add_node(dx=1e-10, mat='S', ep_k=11.7, rho=0.0, doping=1e25)
+    npe.add_node(dx=1e-10, mat='S', ep_k=11.7, rho=0.0, doping=1e24)
 for cnt in range(20):
     npe.add_node(dx=1e-10, mat='O', ep_k=3.9, rho=0.0, doping=0.0)
 
